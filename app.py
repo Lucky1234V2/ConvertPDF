@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+from io import BytesIO
 
 from flask import (Flask, redirect, render_template, request,
                    send_from_directory, url_for)
@@ -24,21 +25,23 @@ def upload_image():
             return 'Aucun fichier sélectionné', 400
 
         if file:
-            image_path = os.path.join(PDF_FOLDER, "temp_image.jpg")
             image = Image.open(file.stream)
-            image.save(image_path)
+
+            # Utilisez BytesIO au lieu de sauvegarder l'image sur le disque
+            img_io = BytesIO()
+            image.save(img_io, 'JPEG')
+            img_io.seek(0)
 
             pdf = FPDF()
             pdf.add_page()
-            pdf.image(image_path, x=0, y=0, w=210)
+            # Utilisez BytesIO ici
+            pdf.image(img_io, x=0, y=0, w=210)
 
             # Créer un nom de fichier unique pour le PDF
             timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
             pdf_filename = f"image_to_pdf_{timestamp}.pdf"
             pdf_filepath = os.path.join(PDF_FOLDER, pdf_filename)
             pdf.output(pdf_filepath)
-
-            os.remove(image_path)  # Supprime l'image temporaire
 
             # Génère le chemin relatif pour l'utilisation dans le template
             pdf_rel_path = os.path.join('pdfs', pdf_filename)

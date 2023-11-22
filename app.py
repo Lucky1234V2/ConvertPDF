@@ -1,58 +1,54 @@
 import base64
 import os
-from datetime import datetime
 from io import BytesIO
+from tempfile import NamedTemporaryFile
 
-from flask import (Flask, redirect, render_template, request,
-                   send_from_directory, url_for)
+from flask import Flask, jsonify, request, send_file
 from fpdf import FPDF
 from PIL import Image
 
 app = Flask(__name__)
 
-PDF_FOLDER = os.path.join('static', 'pdfs')
-os.makedirs(PDF_FOLDER, exist_ok=True)
 
+@app.route('/', methods=['POST'])
+def convert_to_pdf():
+    try:
+        # Récupérer les données JSON de la requête
+        data = request.get_json()
 
-@app.route('/', methods=['GET', 'POST'])
-def upload_image():
-    pdf_filepath = None
-    if request.method == 'POST':
-        if 'image' not in request.files:
-            return 'Aucun fichier sélectionné', 400
-        file = request.files['image']
-        if file.filename == '':
-            return 'Aucun fichier sélectionné', 400
+        # Récupérer l'image base64 à partir des données JSON
+        image_base64 = data.get('image', '')
 
-        if file:
-            image = Image.open(file.stream)
+        # Créer une instance de FPDF
+        pdf = FPDF()
+        pdf.add_page()
 
-            img_io = BytesIO()
-            image.save(img_io, format='JPEG')
-            img_io.seek(0)
-            img_base64 = base64.b64encode(img_io.getvalue()).decode()
+        # Convertir l'image base64 en format image
+        image_data = base64.b64decode(image_base64)
+        image = Image.open(BytesIO(image_data))
 
-            pdf = FPDF()
-            pdf.add_page()
-            pdf.image('@' + img_base64, x=0, y=0, w=210)
+        # Sauvegarder l'image temporairement
+        with NamedTemporaryFile(delete=False, suffix='.jpg') as temp_img:
+            image.save(temp_img, format='JPEG')
+            temp_img_path = temp_img.name
 
-            timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-            pdf_filename = f"image_to_pdf_{timestamp}.pdf"
-            pdf_filepath = os.path.join(PDF_FOLDER, pdf_filename)
-            pdf.output(pdf_filepath)
+        # Ajouter l'image au PDF
+        pdf.image(temp_img_path, x=0, y=0, w=210)
 
-            pdf_rel_path = os.path.join('pdfs', pdf_filename)
+        # Supprimer le fichier temporaire
+        os.remove(temp_img_path)
 
-            return redirect(url_for('download_pdf', pdf_filename=pdf_filename))
+        # Enregistrer le PDF généré dans un fichier temporaire
+        pdf_file = NamedTemporaryFile(delete=False, suffix='.pdf')
+        pdf_file.close()
+        pdf.output(pdf_file.name)
 
-    return render_template('index.html', pdf_filepath=pdf_rel_path if pdf_filepath else None)
+        # Renvoyer le fichier PDF généré en réponse
+        return send_file(pdf_file.name, as_attachment=True, download_name='output.pdf')
 
-
-@app.route('/download/<pdf_filename>')
-def download_pdf(pdf_filename):
-    safe_pdf_filename = os.path.basename(pdf_filename)
-    return send_from_directory(PDF_FOLDER, safe_pdf_filename, as_attachment=True)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run()

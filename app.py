@@ -44,6 +44,7 @@ def convert_image_to_pdf(image):
     # Convertir l'image PIL en bytes pour FPDF
     img_data = io.BytesIO()
     image.save(img_data, format='JPEG')
+    img_data.seek(0)  # Revenir au début du flux
     pdf.image(img_data, x=10, y=10, w=190)
     pdf_data = pdf.output(dest='S').encode('latin1')
     return pdf_data
